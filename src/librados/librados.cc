@@ -3466,23 +3466,20 @@ extern "C" int rados_nobjects_list_open(rados_ioctx_t io, rados_list_ctx_t *list
   tracepoint(librados, rados_nobjects_list_open_exit, 0, *listh);
   return 0;
 }
-static uint32_t nibble_twiddle(uint32_t hash)
-{
-  hash = ((hash & 0x0f0f0f0f) << 4) | ((hash & 0xf0f0f0f0) >> 4);
-  hash = ((hash & 0x00ff00ff) << 8) | ((hash & 0xff00ff00) >> 8);
-  hash = ((hash & 0x0000ffff) << 16) | ((hash & 0xffff0000) >> 16);
-  return hash;
-}
+
 extern "C" int rados_nobjects_list_open_range(
     rados_ioctx_t io, uint32_t n, uint32_t m, rados_list_ctx_t *listh)
 {
   librados::IoCtxImpl *ctx = (librados::IoCtxImpl *)io;
+
+  ldout(ctx->client->cct, 10) << __func__ << " " << n << "/" << m << dendl;
 
   tracepoint(librados, rados_nobjects_list_open_enter, io);
 
   const OSDMap *osd_map = ctx->objecter->get_osdmap_read();
   const pg_pool_t *pool = osd_map->get_pg_pool(ctx->poolid);
   const uint32_t pg_pow2_count = pool->pg_num_mask + 1;
+  const uint32_t pg_num_mask = pool->pg_num_mask;
   ctx->objecter->put_osdmap_read();
 
   // 16 workers for 8 PGs: each worker touches one PG, PGs split in 2
@@ -3528,8 +3525,8 @@ extern "C" int rados_nobjects_list_open_range(
   h->pool_snap_seq = ctx->snap_seq;
   h->nspace = ctx->oloc.nspace;	// After dropping compatibility need nspace
 
-  // for clarity, let's just try calculating everyone at once
-  for (int N = 0; N < m; ++N) {
+  const int N = n;
+  //for (int N = 0; N < m; ++N) {
     // The BB bits are masked by the ones in (pgs_per_worker - 1)
 
     // Count the bits in (pgs_per_worker - 1)
@@ -3543,7 +3540,7 @@ extern "C" int rados_nobjects_list_open_range(
 
     ldout(ctx->client->cct, 10) << "ppw: " << pgs_per_worker << ", bits=" << ppw_bits << dendl;
 
-    uint32_t pg_mask = (0xffffffff << ppw_bits) & (pg_pow2_count - 1);
+    uint32_t pg_mask = (0xffffffff << ppw_bits) & pg_num_mask;
     ldout(ctx->client->cct, 10) << "N=" << N << std::hex << " pg_mask = 0x" << pg_mask << dendl;
 
     // Count from 0 to the number of PGs, 
@@ -3552,31 +3549,21 @@ extern "C" int rados_nobjects_list_open_range(
     ldout(ctx->client->cct, 10) << "N=" << N << std::hex << " pg_val = 0x" << pg_val << dendl;
 
     // Each PG is touched by pg_split_denom different workers
-    uint32_t hash_split_size = (0xffffffff / pg_split_denom);
-    uint32_t hash_low = (N % pg_split_denom) * hash_split_size;
-    uint32_t hash_high = (N % pg_split_denom) == (pg_split_denom - 1)
-      ?
-      0xffffffff
-      :
-      ((N % pg_split_denom) + 1) * hash_split_size - 1;
+    
 
-    ldout(ctx->client->cct, 10) << "N=" << N << std::hex << "hash_low = 0x"
-      << hash_low << dendl;
-    ldout(ctx->client->cct, 10) << "N=" << N << std::hex << "hash_high = 0x"
-      << hash_high << dendl;
-
-    if (N == n) {
+   // if (N == n) {
       h->pg_mask = pg_mask;
       h->pg_mask_val = pg_val;
-      h->object_hash_low = hash_low;
-      h->object_hash_high = hash_high;
       h->current_pg = pg_val;  // TODO: randomize/vary so that two workers hitting
       // the same PGs don't both start on the bottom one
 
-      // Starting cookie
-      h->cookie.hash = nibble_twiddle(hash_low);
-    }
-  }
+      h->object_hash_low = 0x0;
+      h->object_hash_high = 0x0;
+
+      h->pg_split_n = (N % pg_split_denom);
+      h->pg_split_m = pg_split_denom;
+   // }
+  //}
 
   ldout(ctx->client->cct, 10) << "pgs_per_worker / pg_split_demon = " <<
     pgs_per_worker << "/" << pg_split_denom << dendl;;

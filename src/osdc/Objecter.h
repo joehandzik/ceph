@@ -1319,9 +1319,14 @@ public:
     // Only touch PGs whose number (masked with pg_mask) matches this
     uint32_t pg_mask_val;
     // List objects starting from this hash value (including equal to)
+    // In HashIndex nibble encoding
     uint64_t object_hash_low;
     // Drop objects greater than hash_high (not equal to)
+    // In HashIndex nibble encoding
     uint64_t object_hash_high;
+
+    int pg_split_n; // I am worker N...
+    int pg_split_m; // ...of M workers sharing this PG
 
     bufferlist bl;   // raw data read to here
     std::list<librados::ListObjectImpl> list;
@@ -1806,6 +1811,7 @@ private:
   void _reopen_session(OSDSession *session);
   void close_session(OSDSession *session);
   
+  void _nlist_recalc_limits(NListContext *list_context);
   void _nlist_reply(NListContext *list_context, int r, Context *final_finish,
 		   epoch_t reply_epoch);
   void _list_reply(ListContext *list_context, int r, Context *final_finish,

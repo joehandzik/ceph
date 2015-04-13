@@ -725,10 +725,18 @@ std::set<std::string> enumerate_objects(IoCtx *io_ctx, int m)
     } else {
       i = io_ctx->nobjects_begin(n, m);
     }
+
+    int n_count = 0;
     librados::NObjectIterator i_end = io_ctx->nobjects_end();
     for (; i != i_end; ++i) {
+      if (result.count(i->get_oid()) != 0) {
+        cerr << "Duplicate! " << i->get_oid() << std::endl;
+        assert(0);
+      }
       result.insert(i->get_oid());
+      ++n_count;
     }
+    cerr << "My share: " << n << "/" << m << ": " << n_count << std::endl;
   }
 
   return result;
@@ -1546,11 +1554,13 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
         std::set<std::string> all_objs;
         all_objs = enumerate_objects(&io_ctx, 1);
         for (int M = 2; M < 27; ++M) {
+        //for (int M = 2; M < 3; ++M) {
           std::set<std::string> these_objects;
           these_objects = enumerate_objects(&io_ctx, M);
           if (these_objects != all_objs) {
             cerr << "Mismatch at M=" << M << " " << all_objs.size()
                  << " vs " << these_objects.size() << std::endl;
+            assert(0);
           }
         }
 

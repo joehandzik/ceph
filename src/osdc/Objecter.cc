@@ -3127,6 +3127,11 @@ void Objecter::list_nobjects(NListContext *list_context, Context *onfinish)
   ldout(cct, 10) << "pgmv: 0x" << std::hex << list_context->pg_mask_val << std::dec << dendl;
   assert((list_context->current_pg & list_context->pg_mask) == list_context->pg_mask_val);
 
+  if (list_context->object_hash_high == 0x0) {
+    // Initial call
+    _nlist_recalc_limits(list_context);
+  }
+
   if (list_context->at_end_of_pg) {
     list_context->at_end_of_pg = false;
     // Skip past any PG IDs that our mask rules out
@@ -3135,8 +3140,7 @@ void Objecter::list_nobjects(NListContext *list_context, Context *onfinish)
     } while ((list_context->current_pg & list_context->pg_mask) != list_context->pg_mask_val);
     list_context->current_pg_epoch = 0;
     list_context->cookie = collection_list_handle_t();
-
-    list_context->cookie.hash = nibble_twiddle(list_context->object_hash_low);
+    _nlist_recalc_limits(list_context);
     
     // Always list from upper
     if (list_context->current_pg >= list_context->starting_pg_num) {
@@ -3169,9 +3173,9 @@ void Objecter::list_nobjects(NListContext *list_context, Context *onfinish)
     ldout(cct, 10) << " pg_num changed; restarting with " << pg_num << dendl;
     list_context->current_pg = 0;
     list_context->cookie = collection_list_handle_t();
-    list_context->cookie.hash = list_context->object_hash_low;
     list_context->current_pg_epoch = 0;
     list_context->starting_pg_num = pg_num;
+    _nlist_recalc_limits(list_context);
   }
   assert(list_context->current_pg <= pg_num);
 
@@ -3184,6 +3188,110 @@ void Objecter::list_nobjects(NListContext *list_context, Context *onfinish)
 
   pg_read(list_context->current_pg, oloc, op,
 	  &list_context->bl, 0, onack, &onack->epoch, &list_context->ctx_budget);
+}
+
+void Objecter::_nlist_recalc_limits(NListContext *list_context)
+{
+  int n = list_context->pg_split_n;
+  int m = list_context->pg_split_m;
+
+  const uint32_t pg_num_mask = osdmap->get_pg_pool(list_context->pool_id)->pg_num_mask;
+
+  ldout(cct, 10) << "Upper bit mask: 0x" << std::hex << nibble_twiddle(pg_num_mask) << std::dec << dendl;
+
+  // Take the number of fixed bits set
+  // The range is from 0 to 2^(varying bits)
+
+
+  int pgnm_bits = 0;
+  for (int i = 0; i < 32; ++i) {
+    if (((pg_num_mask) & (1 << i)) == 0) {
+      pgnm_bits = i;
+      break;
+    }
+  }
+  uint32_t hash_range_size = 0xffffffff >> pgnm_bits;
+
+  uint32_t hash_split_size = (hash_range_size / m);
+  uint32_t hash_low_counter = n * hash_split_size;
+  uint32_t hash_high_counter = n == (m - 1)
+    ?
+    hash_range_size
+    :
+    (n + 1) * hash_split_size - 1;
+
+  uint32_t object_hash_mask = nibble_twiddle(pg_num_mask);
+
+  //uint32_t pg_low_bits = nibble_twiddle(list_context->current_pg % pg_num_mask);
+  uint32_t pg_low_bits = nibble_twiddle(ceph_stable_mod(list_context->current_pg,
+        osdmap->get_pg_pool(list_context->pool_id)->get_pg_num(),
+        pg_num_mask));
+
+  ldout(cct, 10) << "Mixing low: 0x" << std::hex << object_hash_mask
+    << " 0x" << pg_low_bits << " 0x" << hash_low_counter << std::dec << dendl;
+
+  ldout(cct, 10) << "Mixing high: 0x" << std::hex << object_hash_mask
+    << " 0x" << pg_low_bits << " 0x" << hash_high_counter << std::dec << dendl;
+
+  //int j = 0; // Bit counter into the pg_low_bits
+  int k = 0; // Bit counter into the hash_low_counter
+
+  uint32_t hash_low = 0x0;
+  // Now substitute my counter bits into the zeros in the object hash
+  for (int i = 0; i < 32; ++i) {
+    uint32_t bit;
+    if (((object_hash_mask >> i) & 0x1) == 0) {
+      bit = (hash_low_counter >> k) & 0x1;
+      k++;
+    } else {
+      bit = (pg_low_bits >> i) & 0x1;
+      //j++;
+    }
+
+    hash_low |= (bit << i);
+  }
+
+  //j = 0;
+  k = 0;
+  uint32_t hash_high = 0x0;
+  // Now substitute my counter bits into the zeros in the object hash
+  for (int i = 0; i < 32; ++i) {
+    uint32_t bit;
+    if (((object_hash_mask >> i) & 0x1) == 0) {
+      bit = (hash_high_counter >> k) & 0x1;
+      k++;
+    } else {
+      bit = (pg_low_bits >> i) & 0x1;
+      //j++;
+    }
+
+    hash_high |= (bit << i);
+  }
+
+
+
+  // Everything on this PG will have the same value for (unwtwiddled hash % pg_num_mask)
+  // so we don't care about the low pg_num_mask bits: the variation in hash values
+  // is all in the other bits
+  list_context->object_hash_low = hash_low;
+  list_context->object_hash_high = hash_high;
+  list_context->cookie.hash = nibble_twiddle(list_context->object_hash_low);
+
+  ldout(cct, 10) << "PG " << list_context->current_pg << " n/m="
+    << n << "/" << m << " " << std::hex << "hash low-high = 0x"
+    << hash_low << "-0x" << hash_high << std::dec << dendl;
+  // The highest possible value should be present if n==m-1
+  if (n == m - 1) {
+    uint32_t hash_high_2 = (0xffffffff & (~object_hash_mask)) | pg_low_bits;
+    ldout(cct, 10) << "UPPER BOUND hash_high_2 = 0x" << std::hex << hash_high_2 << std::dec << dendl;
+    assert(hash_high == hash_high_2);
+  }
+  if (n == 0) {
+    uint32_t hash_low_2 = (0x00000000 & (~object_hash_mask)) | pg_low_bits;
+    ldout(cct, 10) << "LOW BOUND hash_low_2 = 0x" << std::hex << hash_low_2 << std::dec << dendl;
+    assert(hash_low == hash_low_2);
+  }
+
 }
 
 void Objecter::_nlist_reply(NListContext *list_context, int r,
@@ -3241,6 +3349,7 @@ void Objecter::_nlist_reply(NListContext *list_context, int r,
       ldout(cct, 10) << "Truncating (0x" << std::hex << nibble_twiddle(hash_pos) << " > 0x"
                      << list_context->object_hash_high << std::dec << ")" << dendl;
       response.entries.erase(i, response.entries.end());
+      r = 1;
       break;
     }
   }
