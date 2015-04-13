@@ -6896,7 +6896,10 @@ int Client::uninline_data(Inode *in, Context *onfinish)
                         inline_version_bl);
   bufferlist inline_data = in->inline_data;
   uninline_ops.write(0, inline_data, in->truncate_size, in->truncate_seq);
-  uninline_ops.setxattr("inline_version", inline_version_bl);
+
+  stringstream inline_version_ss;
+  inline_version_ss << in->inline_version;
+  uninline_ops.setxattr("inline_version", inline_version_ss.str());
 
   objecter->mutate(oid,
                    OSDMap::file_to_object_locator(in->layout),
