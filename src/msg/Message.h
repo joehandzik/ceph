@@ -119,7 +119,7 @@
 #define MSG_OSD_PG_UPDATE_LOG_MISSING  114
 #define MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY  115
 
-
+#define MSG_OSD_HARDWARE      114
 // *** MDS ***
 
 #define MSG_MDS_BEACON             100  // to monitor

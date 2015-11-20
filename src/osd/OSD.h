@@ -2421,6 +2421,7 @@ private:
 
   void handle_scrub(struct MOSDScrub *m);
   void handle_osd_ping(class MOSDPing *m);
+  void handle_hardware_op(struct MOSDHardware *m);
   void handle_op(OpRequestRef& op, OSDMapRef& osdmap);
 
   template <typename T, int MSGTYPE>

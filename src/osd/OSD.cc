@@ -98,6 +98,8 @@
 #include "messages/MOSDScrub.h"
 #include "messages/MOSDRepScrub.h"
 
+#include "messages/MOSDHardware.h"
+
 #include "messages/MMonCommand.h"
 #include "messages/MCommand.h"
 #include "messages/MCommandReply.h"
@@ -6343,6 +6345,10 @@ void OSD::_dispatch(Message *m)
     handle_scrub(static_cast<MOSDScrub*>(m));
     break;
 
+  case MSG_OSD_HARDWARE:
+    handle_hardware_op(static_cast<MOSDHardware*>(m));
+    break;
+
     // -- need OSDMap --
 
   default:
@@ -6419,6 +6425,30 @@ void OSD::handle_scrub(MOSDScrub *m)
   }
 
   m->put();
+}
+
+void OSD::handle_hardware_op(MOSDHardware *m)
+{
+  dout(10) << "handle_hardware_op " << *m << dendl;
+  if (!require_mon_peer(m))
+    return;
+  if (m->fsid != monc->get_fsid()) {
+    dout(0) << "handle_hardware_op fsid " << m->fsid << " != "
+	    << monc->get_fsid() << dendl;
+    m->put();
+    return;
+  }
+
+  if (m->hardware_str == "backend" || m->hardware_str == "journal") {
+    dout(10) << "handle_hardware_op " << m->operation_str
+	      << " with hardware target " << m->hardware_str << dendl;
+    //jump to filestore/other specific operation for disks
+    //the filestore code will call blkdev code
+  } else {
+    dout(0) << "hardware target not recognized by OSD" << dendl;
+  }
+  m->put();
+  return;
 }
 
 bool OSD::scrub_random_backoff()

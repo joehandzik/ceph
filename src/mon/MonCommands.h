@@ -821,6 +821,14 @@ COMMAND("osd tier add-cache " \
 	"add a cache <tierpool> (the second one) of size <size> to existing pool <pool> (the first one)", \
 	"osd", "rw", "cli,rest")
 
+//hardware management and monitoring
+COMMAND("osd hardware " \
+	"name=hardware,type=CephChoices,strings=backend|journal " \
+	"name=operation,type=CephChoices,strings=locate_set|locate_unset " \
+	"name=id,type=CephInt,range=0", \
+	"submit {operation} to the {hardware} associated with osd {id}", \
+	"osd", "rw", "cli,rest")
+	
 /*
  * mon/ConfigKeyService.cc
  */

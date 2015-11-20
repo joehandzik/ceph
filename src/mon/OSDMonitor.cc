@@ -44,6 +44,7 @@
 #include "messages/MRemoveSnaps.h"
 #include "messages/MOSDScrub.h"
 #include "messages/MRoute.h"
+#include "messages/MOSDHardware.h"
 
 #include "common/TextTable.h"
 #include "common/Timer.h"
@@ -4091,6 +4092,42 @@ stats_out:
       f->flush(rs);
       rs << "\n";
       rdata.append(rs.str());
+    }
+  } else if (prefix == "osd hardware") {
+    r = 0;
+    int64_t osd = -1;
+    string hardware_str;
+    string operation_str;
+
+    cmd_getval(g_ceph_context, cmdmap, "hardware", hardware_str);
+    cmd_getval(g_ceph_context, cmdmap, "operation", operation_str);
+    cmd_getval(g_ceph_context, cmdmap, "id", osd);
+
+    if (cmd_vartype_stringify(cmdmap["id"]).size() &&
+        !cmd_getval(g_ceph_context, cmdmap, "id", osd)) {
+      ss << "unable to parse osd id value '"
+         << cmd_vartype_stringify(cmdmap["id"]) << "'";
+      goto reply;
+    }
+
+    if (hardware_str == "backend" || hardware_str == "journal") {
+      if (operation_str != "locate_set" && operation_str != "locate_unset")
+	goto reply;
+    } else {
+      goto reply;
+    }
+
+    if (osd < 0) {
+      r = -EINVAL;
+    } else if (osdmap.is_up(osd)) {
+      mon->try_send_message(new MOSDHardware(osdmap.get_fsid(), hardware_str,
+                            operation_str), osdmap.get_inst(osd));
+
+      ss << "osd." << osd << " instructed to execute " << hardware_str
+         << " " << operation_str;
+    } else {
+      ss << "osd." << osd << " is not up";
+      r = -EAGAIN;
     }
   } else {
     // try prepare update
