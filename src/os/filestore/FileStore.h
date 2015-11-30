@@ -119,6 +119,7 @@ public:
 private:
   string internal_name;         ///< internal name, used to name the perfcounter instance
   string basedir, journalpath;
+  string lsm_uri;
   osflagbits_t generic_flags;
   std::string current_fn;
   std::string current_op_seq_fn;
@@ -462,6 +463,8 @@ public:
   }
 
   void collect_metadata(map<string,string> *pm);
+
+  int led(const string& hardware, const string& operation);
 
   int statfs(struct statfs *buf);
 

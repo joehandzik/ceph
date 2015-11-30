@@ -170,7 +170,7 @@ LIBCOMMON_DEPS += \
 	-luuid
 
 if LINUX
-LIBCOMMON_DEPS += -lrt -lblkid
+LIBCOMMON_DEPS += -lrt -lblkid -lstoragemgmt
 endif # LINUX
 
 libcommon_la_SOURCES = common/buffer.cc

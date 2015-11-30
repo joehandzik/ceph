@@ -24,6 +24,7 @@
 #ifdef __linux__
 #include <linux/fs.h>
 #include <blkid/blkid.h>
+#include <libstoragemgmt/libstoragemgmt.h>
 
 #define UUID_LEN 36
 
@@ -215,6 +216,232 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
     blkid_put_cache(cache);
   return rc;
 }
+
+int enable_locate_led(const char *uri, const char *dev_path)
+{
+  lsm_connect *lsm_conn = NULL;
+  lsm_error *lsm_err = NULL;
+  int rc = 0;
+  uint32_t i = 0;
+  uint32_t  j = 0;
+  const char *lsm_password = NULL;
+  uint32_t lsm_tmo = 3000;
+  lsm_system **lsm_sys = NULL;
+  uint32_t sys_count = 0;
+  const char *sys_id = NULL;
+  lsm_volume **lsm_vol = NULL;
+  uint32_t vol_count = 0;
+  lsm_disk **lsm_disk = NULL;
+  uint32_t disk_count = 0;
+  const char *lsm_dev_path = NULL;
+  lsm_system_mode_type sys_mode = LSM_SYSTEM_MODE_NO_SUPPORT;
+  lsm_storage_capabilities *lsm_cap = NULL;
+  char basename[PATH_MAX];
+
+  rc = lsm_connect_password(uri, lsm_password, &lsm_conn, lsm_tmo,
+	&lsm_err, LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc; 
+
+  rc = lsm_system_list(lsm_conn, &lsm_sys, &sys_count, LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc;
+
+  for (i = 0; i<sys_count; i++) {
+
+    rc = lsm_capabilities(lsm_conn, lsm_sys[i], &lsm_cap,
+          LSM_CLIENT_FLAG_RSVD);
+
+    if (rc)
+      goto free;
+
+    if (!lsm_capability_get(lsm_cap, LSM_CAP_SYS_MODE_GET))
+      goto free;
+
+    rc = lsm_system_mode_get(lsm_sys[i], &sys_mode);
+
+    if (rc)
+      goto free;
+
+    sys_id = lsm_system_id_get(lsm_sys[i]);
+
+    if (sys_mode == LSM_SYSTEM_MODE_HARDWARE_RAID) {
+
+    if (!lsm_capability_get(lsm_cap, LSM_CAP_VOLUMES))
+      goto free;
+
+      rc = lsm_volume_list(lsm_conn, "system_id", sys_id, &lsm_vol, &vol_count,
+            LSM_CLIENT_FLAG_RSVD);
+
+      if (rc)
+        goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_VOLUME_SD_PATH) &&
+          lsm_capability_get(lsm_cap, LSM_CAP_VOLUME_LED)) {
+
+        for (j = 0; j<vol_count; j++) {
+
+          rc = lsm_volume_sd_path_get(lsm_vol[j], &lsm_dev_path);
+          rc = get_block_device_base(lsm_dev_path, basename, sizeof(basename));
+          if (strcmp(basename, dev_path)) {
+            continue;
+          } else {
+            rc = lsm_volume_ident_led_set(lsm_conn, lsm_vol[j],
+                  LSM_CLIENT_FLAG_RSVD);
+            break;
+          }
+        }
+      }
+      lsm_volume_record_array_free(lsm_vol, vol_count);
+    } else if (sys_mode == LSM_SYSTEM_MODE_HBA) {
+      rc = lsm_disk_list(lsm_conn, "system_id", sys_id, &lsm_disk, &disk_count,
+            LSM_CLIENT_FLAG_RSVD);
+
+      if (rc)
+        goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_DISK_SD_PATH) &&
+          lsm_capability_get(lsm_cap, LSM_CAP_DISK_LED)) {
+
+        for (j = 0; j<disk_count; j++) {
+          rc = lsm_disk_sd_path_get(lsm_disk[j], &lsm_dev_path);
+          rc = get_block_device_base(lsm_dev_path, basename, sizeof(basename));
+          if (strcmp(basename, dev_path)) {
+            continue;
+          } else {
+            rc = lsm_disk_set_ident_led(lsm_conn, lsm_disk[j],
+                  LSM_CLIENT_FLAG_RSVD);
+            break;
+          }
+        }
+      }
+      lsm_disk_record_array_free(lsm_disk, disk_count);
+    } else {
+      rc = -EOPNOTSUPP;
+      goto free;
+    }
+  }
+free:
+  lsm_connect_close(lsm_conn, LSM_CLIENT_FLAG_RSVD);
+  lsm_system_record_array_free(lsm_sys, sys_count);
+  lsm_capability_record_free(lsm_cap);
+  return rc;
+}
+ 
+int disable_locate_led(const char *uri, const char *dev_path)
+{
+  lsm_connect *lsm_conn = NULL;
+  lsm_error *lsm_err = NULL;
+  int rc = 0;
+  uint32_t i = 0;
+  uint32_t  j = 0;
+  const char *lsm_password = NULL;
+  uint32_t lsm_tmo = 3000;
+  lsm_system **lsm_sys = NULL;
+  uint32_t sys_count = 0;
+  const char *sys_id = NULL;
+  lsm_volume **lsm_vol = NULL;
+  uint32_t vol_count = 0;
+  lsm_disk **lsm_disk = NULL;
+  uint32_t disk_count = 0;
+  const char *lsm_dev_path = NULL;
+  lsm_system_mode_type sys_mode = LSM_SYSTEM_MODE_NO_SUPPORT;
+  lsm_storage_capabilities *lsm_cap = NULL;
+  char basename[PATH_MAX];
+
+  rc = lsm_connect_password(uri, lsm_password, &lsm_conn, lsm_tmo,
+	&lsm_err, LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc; 
+
+  rc = lsm_system_list(lsm_conn, &lsm_sys, &sys_count, LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc;
+
+  for (i = 0; i<sys_count; i++) {
+
+    rc = lsm_capabilities(lsm_conn, lsm_sys[i], &lsm_cap,
+          LSM_CLIENT_FLAG_RSVD);
+
+    if (rc)
+      goto free;
+
+    if (!lsm_capability_get(lsm_cap, LSM_CAP_SYS_MODE_GET))
+      goto free;
+
+    rc = lsm_system_mode_get(lsm_sys[i], &sys_mode);
+
+    if (rc)
+      goto free;
+
+    sys_id = lsm_system_id_get(lsm_sys[i]);
+
+    if (sys_mode == LSM_SYSTEM_MODE_HARDWARE_RAID) {
+
+    if (!lsm_capability_get(lsm_cap, LSM_CAP_VOLUMES))
+      goto free;
+
+      rc = lsm_volume_list(lsm_conn, "system_id", sys_id, &lsm_vol, &vol_count,
+            LSM_CLIENT_FLAG_RSVD);
+
+      if (rc)
+        goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_VOLUME_SD_PATH) &&
+          lsm_capability_get(lsm_cap, LSM_CAP_VOLUME_LED)) {
+
+        for (j = 0; j<vol_count; j++) {
+
+          rc = lsm_volume_sd_path_get(lsm_vol[j], &lsm_dev_path);
+          rc = get_block_device_base(lsm_dev_path, basename, sizeof(basename));
+          if (strcmp(basename, dev_path)) {
+            continue;
+          } else {
+            rc = lsm_volume_ident_led_clear(lsm_conn, lsm_vol[j],
+                  LSM_CLIENT_FLAG_RSVD);
+            break;
+          }
+        }
+      }
+      lsm_volume_record_array_free(lsm_vol, vol_count);
+    } else if (sys_mode == LSM_SYSTEM_MODE_HBA) {
+      rc = lsm_disk_list(lsm_conn, "system_id", sys_id, &lsm_disk, &disk_count,
+            LSM_CLIENT_FLAG_RSVD);
+
+      if (rc)
+        goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_DISK_SD_PATH) &&
+          lsm_capability_get(lsm_cap, LSM_CAP_DISK_LED)) {
+
+        for (j = 0; j<disk_count; j++) {
+          rc = lsm_disk_sd_path_get(lsm_disk[j], &lsm_dev_path);
+          rc = get_block_device_base(lsm_dev_path, basename, sizeof(basename));
+          if (strcmp(basename, dev_path)) {
+            continue;
+          } else {
+            rc = lsm_disk_clear_ident_led(lsm_conn, lsm_disk[j],
+                  LSM_CLIENT_FLAG_RSVD);
+            break;
+          }
+        }
+      }
+      lsm_disk_record_array_free(lsm_disk, disk_count);
+    } else {
+      rc = -EOPNOTSUPP;
+      goto free;
+    }
+  }
+free:
+  lsm_connect_close(lsm_conn, LSM_CLIENT_FLAG_RSVD);
+  lsm_system_record_array_free(lsm_sys, sys_count);
+  lsm_capability_record_free(lsm_cap);
+  return rc;
+} 
 #elif defined(__APPLE__)
 #include <sys/disk.h>
 
@@ -248,6 +475,16 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
 {
   return -EOPNOTSUPP;
 }
+
+int enable_locate_led(const char *dev_path)
+{
+  return -EOPNOTSUPP;
+}
+
+int disable_locate_led(const char *dev_path)
+{
+  return -EOPNOTSUPP;
+}
 #elif defined(__FreeBSD__)
 #include <sys/disk.h>
 
@@ -271,6 +508,16 @@ int block_device_discard(int fd, int64_t offset, int64_t len)
 
 int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
 	char* device)
+{
+  return -EOPNOTSUPP;
+}
+
+int enable_locate_led(const char *dev_path)
+{
+  return -EOPNOTSUPP;
+}
+
+int disable_locate_led(const char *dev_path)
 {
   return -EOPNOTSUPP;
 }

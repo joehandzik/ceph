@@ -324,6 +324,10 @@ ACX_PTHREAD
 #Linux only dependencies
 if test x"$linux" = x"yes"; then
 
+  #libstoragemgmt
+  AC_CHECK_HEADER([libstoragemgmt/libstoragemgmt.h], [],
+    AC_MSG_ERROR([libstoragemgmt/libstoragemgmt.h not found (libstoragemgmt-dev, libstoragemgmt-devel)]))
+
   # rbd {map,unmap,showmapped} dependencies, Linux only
   if test x"$with_rbd" = x"yes"; then
 

@@ -6429,6 +6429,8 @@ void OSD::handle_scrub(MOSDScrub *m)
 
 void OSD::handle_hardware_op(MOSDHardware *m)
 {
+  int rc = 0;
+
   dout(10) << "handle_hardware_op " << *m << dendl;
   if (!require_mon_peer(m))
     return;
@@ -6442,11 +6444,15 @@ void OSD::handle_hardware_op(MOSDHardware *m)
   if (m->hardware_str == "backend" || m->hardware_str == "journal") {
     dout(10) << "handle_hardware_op " << m->operation_str
 	      << " with hardware target " << m->hardware_str << dendl;
-    //jump to filestore/other specific operation for disks
-    //the filestore code will call blkdev code
+    rc = store->led(m->hardware_str, m->operation_str);
+
+    dout(10) << "handle_hardware_op " << m->operation_str
+	      << " with hardware target " << m->hardware_str
+	      << " completed with rc " << rc << dendl;
   } else {
     dout(0) << "hardware target not recognized by OSD" << dendl;
   }
+
   m->put();
   return;
 }
