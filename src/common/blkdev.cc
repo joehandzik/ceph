@@ -24,6 +24,7 @@
 #ifdef __linux__
 #include <linux/fs.h>
 #include <blkid/blkid.h>
+#include <limits.h>
 #include <libstoragemgmt/libstoragemgmt.h>
 
 #define UUID_LEN 36
@@ -215,6 +216,22 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
   if (cache)
     blkid_put_cache(cache);
   return rc;
+}
+
+int get_device_by_symlink(const char* symlink, char* device)
+{
+  char basename[PATH_MAX];
+  char *return_ptr;
+
+  return_ptr = realpath(symlink, basename);
+
+  if (return_ptr != basename)
+    goto out;
+
+  strncpy(device, basename, sizeof(basename));
+
+out:
+  return -1;
 }
 
 int enable_locate_led(const char *uri, const char *dev_path)
@@ -476,6 +493,11 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
   return -EOPNOTSUPP;
 }
 
+int get_device_by_symlink(const char* symlink, char* device)
+{
+  return -EOPNOTSUPP;
+}
+
 int enable_locate_led(const char *dev_path)
 {
   return -EOPNOTSUPP;
@@ -508,6 +530,11 @@ int block_device_discard(int fd, int64_t offset, int64_t len)
 
 int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
 	char* device)
+{
+  return -EOPNOTSUPP;
+}
+
+int get_device_by_symlink(const char* symlink, char* device)
 {
   return -EOPNOTSUPP;
 }
