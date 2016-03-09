@@ -558,6 +558,7 @@ private:
 
   std::mutex reap_lock;
   list<CollectionRef> removed_collections;
+  string lsm_uri;
 
 
   // --------------------------------------------------------
@@ -683,6 +684,7 @@ public:
   }
 
 public:
+  int led(const string& hardware, const string& operation);
   int statfs(struct statfs *buf) override;
 
   bool exists(const coll_t& cid, const ghobject_t& oid) override;

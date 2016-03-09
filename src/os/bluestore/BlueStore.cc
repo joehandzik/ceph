@@ -30,6 +30,8 @@
 #include "BlueFS.h"
 #include "BlueRocksEnv.h"
 
+#include "common/blkdev.h"
+
 #define dout_subsys ceph_subsys_bluestore
 
 const string PREFIX_SUPER = "S";   // field -> value
@@ -768,7 +770,8 @@ BlueStore::BlueStore(CephContext *cct, const string& path)
     finisher(cct),
     kv_sync_thread(this),
     kv_stop(false),
-    logger(NULL)
+    logger(NULL),
+    lsm_uri(g_conf->lsm_uri)
 {
   _init_logger();
 }
@@ -2486,6 +2489,28 @@ void BlueStore::_sync()
   }
 
   dout(10) << __func__ << " done" << dendl;
+}
+
+int BlueStore::led(const string& hardware, const string& operation)
+{
+  char dev_node[PATH_MAX];
+  int rc = 0;
+
+  if (hardware == "backend")
+    strcpy(dev_node, path.c_str());
+  else if (hardware == "journal")
+    return -EOPNOTSUPP;
+  else
+    return -EINVAL;
+
+  if (operation == "locate_set")
+    rc = enable_locate_led(lsm_uri.c_str(), dev_node);
+  else if (operation == "locate_unset")
+    rc = disable_locate_led(lsm_uri.c_str(), dev_node);
+  else
+    return -EINVAL;
+ 
+  return rc;
 }
 
 int BlueStore::statfs(struct statfs *buf)
