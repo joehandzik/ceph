@@ -182,6 +182,10 @@ if LINUX
 LIBCOMMON_DEPS += -lrt -lblkid
 endif # LINUX
 
+if WITH_LSM
+LIBCOMMON_DEPS += -lstoragemgmt
+endif # WITH_LSM
+
 libcommon_la_SOURCES = common/buffer.cc
 libcommon_la_LIBADD = $(LIBCOMMON_DEPS)
 noinst_LTLIBRARIES += libcommon.la

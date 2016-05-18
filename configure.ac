@@ -939,6 +939,18 @@ AS_IF([test "x$with_libzfs" = xyes],
 	    [AC_DEFINE([HAVE_LIBZFS], [1], [Defined if you have libzfs enabled])])
 AM_CONDITIONAL(WITH_LIBZFS, [ test "$with_libzfs" = "yes" ])
 
+# use libstoragemgmt
+AC_ARG_WITH([lsm],
+	    [AS_HELP_STRING([--with-lsm], [build libstoragemgmt support])],
+	    ,
+	    [with_lsm=no])
+AS_IF([test "x$with_lsm" = xyes], [
+  AC_CHECK_HEADER([libstoragemgmt/libstoragemgmt.h], [],
+    AC_MSG_ERROR([libstoragemgmt/libstoragemgmt.h not found (libstoragemgmt-dev)]))
+  AC_DEFINE([HAVE_LSM], [1], [Defined if libstoragemgmt is enabled and present])
+])
+AM_CONDITIONAL(WITH_LSM, [ test "$with_lsm" = "yes" ])
+
 # Checks for header files.
 AC_HEADER_DIRENT
 AC_HEADER_STDC
