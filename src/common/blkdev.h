@@ -12,4 +12,6 @@ extern bool block_device_is_rotational(const char *devname);
 extern int block_device_discard(int fd, int64_t offset, int64_t len);
 extern int get_device_by_uuid(uuid_d dev_uuid, const char* label,
 		char* partition, char* device);
+extern int update_locate_led(const char *uri, const char *pwd,
+		const char *operation, const char *dev_path);
 #endif

@@ -119,6 +119,9 @@ public:
 private:
   string internal_name;         ///< internal name, used to name the perfcounter instance
   string basedir, journalpath;
+  bool lsm_enabled;
+  string lsm_uri;
+  string lsm_pwd;
   osflagbits_t generic_flags;
   std::string current_fn;
   std::string current_op_seq_fn;
@@ -460,6 +463,8 @@ public:
   }
 
   void collect_metadata(map<string,string> *pm);
+
+  int led(const string& entity, const string& operation);
 
   int statfs(struct store_statfs_t *buf) override;
 

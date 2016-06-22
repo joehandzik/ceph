@@ -1898,6 +1898,10 @@ public:
 
   virtual void collect_metadata(map<string,string> *pm) { }
 
+  virtual int led(const string& entity, const string& operation) {
+      return -1;
+  }
+
   /**
    * write_meta - write a simple configuration key out-of-band
    *

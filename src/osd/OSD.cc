@@ -5353,6 +5353,11 @@ COMMAND("dump_pg_recovery_stats", "dump pg recovery statistics",
 	"osd", "r", "cli,rest")
 COMMAND("reset_pg_recovery_stats", "reset pg recovery statistics",
 	"osd", "rw", "cli,rest")
+COMMAND("hardware", \
+    "name=entity,type=CephChoices,strings=backend|journal" \
+    "name=operation,type=CephChoices,strings=locate_enable|locate_disable" \
+    "Submit an {operation} to the {entity} associated with this OSD", \
+    "osd", "rw", "cli,rest")
 };
 
 void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
@@ -5452,6 +5457,20 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
       goto out;
     }
     clog->do_log(level, message);
+  }
+  else if (prefix == "hardware") {
+    string entity_str;
+    string operation_str;
+
+    cmd_getval(cct, cmdmap, "entity", entity_str);
+    cmd_getval(cct, cmdmap, "operation", operation_str);
+
+    if (entity_str.empty() || operation_str.empty()) {
+      r = -EINVAL;
+      ss << "empty entity or operation argument";
+    }
+
+    handle_hardware_op(entity_str, operation_str);
   }
 
   // either 'pg <pgid> <command>' or
@@ -6353,6 +6372,26 @@ void OSD::handle_scrub(MOSDScrub *m)
   }
 
   m->put();
+}
+
+void OSD::handle_hardware_op(const string& entity, const string& operation)
+{
+  int rc = 0;
+
+  dout(10) << "handle_hardware_op " << operation << " for entity "
+           << entity << dendl;
+
+    if (entity == "backend") {
+      if (operation == "locate_enable" || operation == "locate_disable") {
+        rc = store->led(entity, operation);
+      } else {
+        dout(0) << "invalid operation " << operation << dendl;
+      }
+    } else {
+      dout(0) << "invalid entity " << entity << dendl;
+    }
+
+  return;
 }
 
 bool OSD::scrub_random_backoff()

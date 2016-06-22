@@ -55,6 +55,10 @@ OPTION(err_to_graylog, OPT_BOOL, false)
 OPTION(log_graylog_host, OPT_STR, "127.0.0.1")
 OPTION(log_graylog_port, OPT_INT, 12201)
 
+OPTION(lsm_enabled, OPT_BOOL, false)
+OPTION(lsm_uri, OPT_STR, "")
+OPTION(lsm_pwd, OPT_STR, "")
+
 // options will take k/v pairs, or single-item that will be assumed as general
 // default for all, regardless of channel.
 // e.g., "info" would be taken as the same as "default=info"

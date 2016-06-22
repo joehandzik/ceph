@@ -518,6 +518,9 @@ FileStore::FileStore(const std::string &base, const std::string &jdev, osflagbit
   JournalingObjectStore(base),
   internal_name(name),
   basedir(base), journalpath(jdev),
+  lsm_enabled(g_conf->lsm_enabled),
+  lsm_uri(g_conf->lsm_uri),
+  lsm_pwd(g_conf->lsm_pwd),
   generic_flags(flags),
   blk_size(0),
   fsid_fd(-1), op_fd(-1),
@@ -699,6 +702,31 @@ void FileStore::collect_metadata(map<string,string> *pm)
       (*pm)["backend_filestore_partition_path"] = string(partition_path);
       (*pm)["backend_filestore_dev_node"] = string(dev_node);
   }
+}
+
+int FileStore::led(const string& entity, const string& operation)
+{
+  char partition_path[PATH_MAX];
+  char dev_node[PATH_MAX];
+  int rc = 0;
+
+  if (!lsm_enabled)
+    return -EPERM;
+
+  if (entity == "backend")
+    rc = get_device_by_uuid(get_fsid(), "PARTUUID", partition_path, dev_node);
+  else if (entity == "journal")
+    return -EOPNOTSUPP;
+  else
+    return -EINVAL;
+
+  if (operation == "locate_enable" || operation == "locate_disable")
+    rc = update_locate_led(lsm_uri.c_str(), lsm_pwd.c_str(), operation.c_str(),
+			   dev_node);
+  else
+    return -EINVAL;
+
+  return rc;
 }
 
 int FileStore::statfs(struct store_statfs_t *buf0)

@@ -25,7 +25,12 @@
 #include <linux/fs.h>
 #include <blkid/blkid.h>
 
+#ifdef HAVE_LSM
+#include <libstoragemgmt/libstoragemgmt.h>
+#endif
+
 #define UUID_LEN 36
+#define VPD_LEN 33
 
 static const char *sandbox_dir = "";
 
@@ -228,6 +233,150 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
     blkid_put_cache(cache);
   return rc;
 }
+
+#ifdef HAVE_LSM
+int update_locate_led(const char *uri, const char *pwd, const char *operation,
+		      const char *dev_path)
+{
+  lsm_connect *lsm_conn = NULL;
+  lsm_error *lsm_err = NULL;
+  int rc = 0;
+  uint32_t i = 0;
+  uint32_t j = 0;
+  uint32_t lsm_tmo = 3000;
+  lsm_system **lsm_sys = NULL;
+  uint32_t sys_count = 0;
+  const char *sys_id = NULL;
+  lsm_volume **lsm_vol = NULL;
+  uint32_t vol_count = 0;
+  lsm_disk **lsm_disk = NULL;
+  uint32_t disk_count = 0;
+  lsm_system_mode_type sys_mode = LSM_SYSTEM_MODE_NO_SUPPORT;
+  lsm_storage_capabilities *lsm_cap = NULL;
+  char *lsm_vpd_from_path;
+  const char *lsm_vpd_to_check;
+
+  if (strcmp(uri, "") == 0)
+    rc = lsm_local_disk_ident_led_on(dev_path, &lsm_err);
+
+  rc = lsm_connect_password(uri, pwd, &lsm_conn, lsm_tmo, &lsm_err,
+       LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc;
+
+  rc = lsm_system_list(lsm_conn, &lsm_sys, &sys_count, LSM_CLIENT_FLAG_RSVD);
+
+  if (rc)
+    return rc;
+
+  //generate just in time in case the above checks fail
+  rc = lsm_local_disk_vpd83_get(dev_path, &lsm_vpd_from_path, &lsm_err);
+
+  if (rc)
+    return rc;
+
+  for (i = 0; i<sys_count; i++) {
+
+    rc = lsm_capabilities(lsm_conn, lsm_sys[i], &lsm_cap,
+         LSM_CLIENT_FLAG_RSVD);
+
+    if (rc)
+      goto free;
+    
+    //Should we fail here, or just assume RAID mode?
+    if (!lsm_capability_get(lsm_cap, LSM_CAP_SYS_MODE_GET))
+      goto free;
+
+    sys_mode = lsm_system_mode_get(lsm_sys[i]);
+
+    sys_id = lsm_system_id_get(lsm_sys[i]);
+
+    if (sys_mode == LSM_SYSTEM_MODE_HARDWARE_RAID) {
+
+      if (!lsm_capability_get(lsm_cap, LSM_CAP_VOLUMES))
+        goto free;
+
+      rc = lsm_volume_list(lsm_conn, "system_id", sys_id, &lsm_vol, &vol_count,
+           LSM_CLIENT_FLAG_RSVD);
+
+      if (rc)
+        goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_VOLUME_LED)) {
+
+        for (j = 0; j<vol_count; j++) {
+
+          lsm_vpd_to_check = lsm_volume_vpd83_get(lsm_vol[j]);
+
+          if (strcmp(lsm_vpd_to_check, lsm_vpd_from_path)) {
+            continue;
+          } else {
+            if (!strcmp(operation, "locate_enable")) {
+              rc = lsm_volume_ident_led_on(lsm_conn, lsm_vol[j],
+                   LSM_CLIENT_FLAG_RSVD);
+            } else if (!strcmp(operation, "locate_disable")) {
+              rc = lsm_volume_ident_led_off(lsm_conn, lsm_vol[j],
+                   LSM_CLIENT_FLAG_RSVD);
+            } else {
+              rc = -EOPNOTSUPP;
+            }
+            break;
+          }
+        }
+      }
+      lsm_volume_record_array_free(lsm_vol, vol_count);
+    } else if (sys_mode == LSM_SYSTEM_MODE_HBA) {
+
+      if (!lsm_capability_get(lsm_cap, LSM_CAP_DISKS))
+        goto free;
+
+      rc = lsm_disk_list(lsm_conn, "system_id", sys_id, &lsm_disk,
+           &disk_count, LSM_CLIENT_FLAG_RSVD);
+
+        if (rc)
+          goto free;
+
+      if (lsm_capability_get(lsm_cap, LSM_CAP_DISK_VPD83_GET)) {
+
+        for (j = 0; j<disk_count; j++) {
+
+          lsm_vpd_to_check = lsm_disk_vpd83_get(lsm_disk[j]);
+ 
+          if (strcmp(lsm_vpd_to_check, lsm_vpd_from_path)) {
+            continue;
+          } else {
+            if (!strcmp(operation, "locate_enable")) {
+              rc = lsm_local_disk_ident_led_on(dev_path, &lsm_err);
+            } else if (!strcmp(operation, "locate_disable")) {
+              rc = lsm_local_disk_ident_led_off(dev_path, &lsm_err);
+            } else {
+              rc = -EOPNOTSUPP;
+            }
+            break;
+          }
+        }
+      }
+      lsm_disk_record_array_free(lsm_disk, disk_count);
+    } else {
+      rc = -EOPNOTSUPP;
+    }
+  }
+  free:
+    lsm_connect_close(lsm_conn, LSM_CLIENT_FLAG_RSVD);
+    lsm_system_record_array_free(lsm_sys, sys_count);
+    lsm_capability_record_free(lsm_cap);
+    lsm_error_free(lsm_err);
+    free(lsm_vpd_from_path);
+    return rc;
+}
+#else
+int update_locate_led(const char *uri, const char *pwd, const char *operation,
+		      const char *dev_path)
+{
+ return -EOPNOTSUPP;
+}
+#endif
 #elif defined(__APPLE__)
 #include <sys/disk.h>
 
@@ -265,6 +414,12 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
 	char* device)
 {
   return -EOPNOTSUPP;
+}
+
+int update_locate_led(const char *uri, const char *pwd, const char *operation,
+		      const char *dev_path)
+{
+ return -EOPNOTSUPP;
 }
 #elif defined(__FreeBSD__)
 #include <sys/disk.h>
@@ -322,5 +477,11 @@ int get_device_by_uuid(uuid_d dev_uuid, const char* label, char* partition,
 	char* device)
 {
   return -EOPNOTSUPP;
+}
+
+int update_locate_led(const char *uri, const char *pwd, const char *operation,
+		      const char *dev_path)
+{
+ return -EOPNOTSUPP;
 }
 #endif
