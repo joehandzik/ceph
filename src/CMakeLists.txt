@@ -554,6 +554,10 @@ endif(HAVE_ARMV8_CRC)
 
 add_library(common_utf8 STATIC common/utf8.c)
 
+if(WITH_LSM)
+  target_link_libraries(common ${LSM_LIBRARIES})
+endif(WITH_LSM)
+
 if(${WITH_LTTNG})
   add_subdirectory(tracing)
 endif(${WITH_LTTNG})

@@ -225,6 +225,12 @@ if(WITH_SPDK)
   set(HAVE_SPDK TRUE)
 endif(WITH_SPDK)
 
+option(WITH_LSM "Enable libstoragemgmt" OFF)
+if (WITH_LSM)
+  find_package(libstoragemgmt REQUIRED)
+  set(HAVE_LSM TRUE)
+endif (WITH_LSM)
+
 # needs mds and? XXX
 option(WITH_LIBCEPHFS "libcephfs client library" ON)
 
